@@ -9,7 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use DB;
 
-class queueJob implements ShouldQueue
+class QueueJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -33,9 +33,6 @@ class queueJob implements ShouldQueue
      */
     public function handle()
     {
-        //
-        
         DB::table('queues')->insert($this->item);
-        
     }
 }

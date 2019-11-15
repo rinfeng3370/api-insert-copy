@@ -5,17 +5,17 @@ namespace App\Console\Commands;
 use Illuminate\Console\Command;
 use DB;
 use \Curl\Curl;
-use Illuminate\Support\Collection;
-use App\Jobs\queueJob;
+use App\Jobs\QueueJob;
+use DateTime;
 
-class queueTest2 extends Command
+class QueueTest2 extends Command
 {
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'command:queueTest2 {num}';
+    protected $signature = 'command:queueTest2';
 
     /**
      * The console command description.
@@ -24,8 +24,7 @@ class queueTest2 extends Command
      */
     protected $description = 'Command description';
 
-    protected $item;
-
+    protected $retry = 0;
     /**
      * Create a new command instance.
      *
@@ -44,69 +43,70 @@ class queueTest2 extends Command
     public function handle()
     {
         //
-        DB::disconnect('queue');
-        $num = $this->argument('num');
         $curl = new Curl();
+
+        $date = date("Y-m-d");
+
+        $hour = date("H");
         
+        $min = date("i");
 
-        $curl->get("http://train.rd6/?start=2019-11-10T10:11:11&end=2019-11-10T10:12:00&from={$num}");
-
-        if ($curl->error) {
-            echo 'Error: ' . $curl->errorCode . ': ' . $curl->errorMessage . "\n";
+        if ($hour == "00" && $min == "00") {   //換日處理
+            $hour = "23";
+            $min = "59";
+            $date = new DateTime('now');
+            date_modify($date, '-1 day');
+            $date = $date->format('Y-m-d');
+        } elseif ($min == "00") {              //整點處理
+            $hour = substr(($hour-1)+100,1,2);
+            $min = 59;
         } else {
-            echo 'Response:' . "\n";
-            echo "起始筆數: {$num} \n";
+            $min = substr(($min-1)+100,1,2);
+        }     
 
-            $data = json_decode($curl->response,true);
-            // $aaa = stripcslashes(json_encode($data['hits']['hits'][0]['_source']));
-            // $bbb = json_decode($aaa,true);
-            // dd($bbb);
-            foreach($data['hits']['hits'] as $i => $value){
-                $data['hits']['hits'][$i]['_source'] = stripcslashes(json_encode($value['_source']));
-                $data['hits']['hits'][$i]['sort'] = stripcslashes(json_encode($value['sort']));
-            }
-            // 
-            $arrayLength = count($data['hits']['hits']);
-            echo "資料量: $arrayLength \n";
-
-            // collect($data['hits']['hits'])->chunk(500)->each(function ($chunk) { 
-            //     DB::transaction(function () use ($chunk) {
-            //         DB::table('queues')->insert($chunk->toArray());
-            //     });
-            // });
-
-            $count = 0;
-
-            while($count <= 8000){
-                echo "$count \n";
-                $this->item = array_slice($data['hits']['hits'],$count,2000);
-
-                queueJob::dispatch($this->item);
-              
-                // DB::beginTransaction();
-                
-                // DB::table('queues')->insert($this->item);
-
-                // DB::commit();
-
-                $count += 2000;
-                
-            }
-            
-        }
-
-        $curl->close();
+        $url = "http://train.rd6/?start={$date}T{$hour}:{$min}:00&end={$date}T{$hour}:{$min}:59&from=10000";
+        echo $url. "\n";
         
-        if($num == 90000){
+        $curl->get($url);
+
+        if ($curl->error) {   //如果發生錯誤會在重試3次 如果都失敗會把網址記到log裡
+            echo 'Error: ' . $curl->errorCode . ': ' . $curl->errorMessage . "\n";
+            while ($curl->error && $this->retry < 4) {
+                $this->retry ++;
+                echo $this->retry;
+                $curl->get($url);
+            }
+            if ($curl->error && $this->retry == 3) {
+                Log::warning("遺漏的單:{$url}");
+                die();
+            }
+        }
             
+        echo 'Response:' . "\n";
+        echo "起始筆數: 0 \n";
+
+        $data = json_decode($curl->response,true);
+
+        $array_key = array_keys($data);   //回傳error或沒資料時停止
+        if ($array_key[0] == "error" || $data['hits']['total']['value'] == 0) {
+            $this->error('發生錯誤或無資料!');
             die();
         }
 
-        $num += 10000;
-        sleep(3);
-        $this->call('command:queueTest2', [
-            'num' => $num
-        ]);
-    
+        foreach($data['hits']['hits'] as $i => $value){    
+            $data['hits']['hits'][$i]['_source'] = stripcslashes(json_encode($value['_source']));
+            $data['hits']['hits'][$i]['sort'] = stripcslashes(json_encode($value['sort']));
+        }
+
+        $arrayLength = count($data['hits']['hits']);
+        echo "資料量: $arrayLength \n";
+        
+        $items = array_chunk($data['hits']['hits'],1000); //每次分成1000筆推至隊列
+        foreach($items as $item){
+            QueueJob::dispatch($item);
+        }
+            
+        $curl->close();
+
     }
 }
