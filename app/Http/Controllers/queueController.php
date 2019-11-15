@@ -33,7 +33,7 @@ class queueController extends Controller
             $min = substr(($min-1)+100,1,2);
         }     
 
-        $url = "http://train.rd6/?start={$date}T{$hour}:{$min}:00&end={$date}T{$hour}:{$min}:59&from=10000";
+        $url = "http://train.rd6/?start={$date}T{$hour}:{$min}:00&end={$date}T{$hour}:{$min}:59&from=0";
         echo $url. "\n";
         
         $curl->get($url);
@@ -49,10 +49,10 @@ class queueController extends Controller
             $array_key = array_keys($data);
             $value = $data['hits']['total']['value'];
 
-            if ($array_key[0] == "error" || $value == 0) {
-                $this->error('發生錯誤或無資料!');
-                die();
-            }
+            // if ($array_key[0] == "error" || $value == 0) {
+            //     $this->error('發生錯誤或無資料!');
+            //     die();
+            // }
 
             foreach($data['hits']['hits'] as $i => $value){
                 $data['hits']['hits'][$i]['_source'] = stripcslashes(json_encode($value['_source']));
