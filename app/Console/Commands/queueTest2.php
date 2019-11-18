@@ -42,6 +42,7 @@ class QueueTest2 extends Command
      */
     public function handle()
     {
+        //
         $curl = new Curl();
 
         $date = date("Y-m-d");
@@ -63,14 +64,14 @@ class QueueTest2 extends Command
             $min = substr(($min-1)+100,1,2);
         }     
 
-        $url = "http://train.rd6/?start={$date}T{$hour}:{$min}:00&end={$date}T{$hour}:{$min}:59&from=0";
+        $url = "http://train.rd6/?start={$date}T{$hour}:{$min}:00&end={$date}T{$hour}:{$min}:59&from=10000";
         echo $url. "\n";
         
         $curl->get($url);
 
         if ($curl->error) {   //如果發生錯誤會在重試3次 如果都失敗會把網址記到log裡
             echo 'Error: ' . $curl->errorCode . ': ' . $curl->errorMessage . "\n";
-            while ($curl->error && $this->retry < 3) {
+            while ($curl->error && $this->retry < 4) {
                 $this->retry ++;
                 echo $this->retry;
                 $curl->get($url);
